@@ -1,0 +1,88 @@
+import { currentMember, members } from 'wix-members-backend';
+import { notifications } from 'wix-crm-backend';
+import wixData from 'wix-data';
+
+const memberOptions = {
+   fieldsets: [ 'FULL' ]
+}
+
+const questionOptions = {
+   'suppressAuth': true
+};
+
+export async function getMemberData() {
+  return currentMember.getMember(memberOptions)
+    .then((member) => {
+      return member;
+    })
+    .catch((error) => {
+      console.error(error);
+    })
+}
+
+export async function getAssessmentStatements() {
+  return wixData.query('LeadershipAssessmentQuestions')
+    .find(questionOptions)
+    .then((response) => {
+      return response.items || [];
+    })
+    .catch((error) => {
+      console.error(error);
+    });
+} 
+
+export async function getStrengths() {
+  return wixData.query('LeadershipStrengths')
+    .find(questionOptions)
+    .then((response) => {
+      let strengths = {};
+      for (let i = 0 ; i < response.items.length; i++) {
+        let item = response.items[i];
+        strengths[item.name] = item.description;
+      }
+      return strengths;
+    })
+    .catch((error) => {
+      console.error(error);
+    });
+} 
+
+export const toOxfordComma = (array) =>
+  array.length === 2
+    ? array.join(' and ')
+    : array.length > 2
+    ? array
+        .slice(0, array.length - 1)
+        .concat(`and ${array.slice(-1)}`)
+        .join(', ')
+    : array.join(', ')
+
+export async function setMemberStrengths(memberId, strengths) {
+  let strengthsString = toOxfordComma(strengths.map(strength => strength[0]));
+  let memberInfo = {
+      contactDetails: {
+          customFields: {
+              "custom.strengths": {
+                name: "Strengths",
+                value: strengthsString
+              }
+          }
+      }
+  };
+  return members.updateMember(memberId, memberInfo)
+    .then((member) => {
+      return member;
+    })
+    .catch((error) => {
+      console.error(error);
+    });
+}
+
+export function notifyOwner(title, message) {
+  let response = notifications.notify(title + ":\n" + message, ["Mobile"], 
+    {"title": title, "recipients": {"role": "Owner"}
+  });  
+  console.log(response);
+  return response;
+}
+

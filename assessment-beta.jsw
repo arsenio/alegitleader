@@ -1,0 +1,152 @@
+import { getAssessmentStatements, getStrengths, notifyOwner } from 'backend/strengths';
+
+$w.onReady(function () {
+    const value = loadQuestions(); 
+  
+    Promise.all([value])
+        .then(() => {
+            setupEventHandlers();
+            setTimeout(finalizeRepeaterDisplay, 2500);
+        });
+});
+
+function setupEventHandlers() {
+    $w('#complete').onClick(async () => {
+        let isUserAnswersValid = await checkValidity();
+        if (!isUserAnswersValid) {
+            return;
+        }
+
+        let valueScores = {};
+        $w('#statementRepeater').forEachItem(($item, itemData, index) => {
+            let agreeValue = itemData['valAgree'] * $item('#statementRadio').value / 4;
+            let disagreeValue = itemData['valDisagree'] * (4 - $item('#statementRadio').value) / 4;
+            if (valueScores[itemData['strAgree']]) {
+                agreeValue += valueScores[itemData['strAgree']];
+            }
+            if (valueScores[itemData['strDisagree']]) {
+                disagreeValue += valueScores[itemData['strDisagree']];
+            }
+            valueScores[itemData['strAgree']] = agreeValue;
+            valueScores[itemData['strDisagree']] = disagreeValue;
+        });
+        let answers = [];
+        reverseValueSort(valueScores, function(key, value) {
+            answers.push([key, value]);
+        });
+        showResults(answers);
+    });
+}
+
+function loadQuestions() {
+    const execute = async () => {
+        $w('#spinner').show();
+        let statements = await getAssessmentStatements();
+        $w('#statementRepeater').data = statements;
+
+        let statementCount = 0;
+        let totalCount = statements.length;
+
+        $w('#statementRepeater').onItemReady(($item, itemData, index) => {
+            statementCount += 1;
+            $item('#statementText').html = '<p><b>' + statementCount + ' of '
+                                         + totalCount + '.</b>&nbsp;&nbsp;'
+                                         + itemData.statement + '</p>';
+        });
+    };
+    execute();
+    return;
+}
+
+async function checkValidity() {
+    let allInputsValidity = [];
+    $w('#statementRepeater').forEachItem(($item, itemData, index) => {
+        allInputsValidity.push($item('#statementRadio').valid);
+        $item('#statementRadio').updateValidityIndication();
+
+    });
+    for (let i = 0; i < allInputsValidity.length; i++) {
+        const valid = allInputsValidity[i];
+        if (!valid) {
+            return false;
+        }
+    }
+    return true;
+}
+
+async function finalizeRepeaterDisplay() {
+    $w('#statementRepeater').forEachItem(($item, itemData, index) => {
+        $item('#statementRadio').resetValidityIndication();
+    });
+
+    $w('#spinner').hide();
+    $w('#statementRepeater').show();
+    $w('#complete').show();
+
+    return true;
+}
+
+function reverseValueSort(obj, callback, context) {
+    var tuples = [];
+
+    for (var key in obj) tuples.push([key, obj[key]]);
+
+    tuples.sort(function(a, b) {
+        return a[1] > b[1] ? 1 : a[1] < b[1] ? -1 : 0
+    });
+
+    var length = tuples.length;
+    while (length--) callback.call(context, tuples[length][0], tuples[length][1]);
+}
+
+async function showResults(answers) {
+    const execute = async () => {
+        $w('#spinner').show();
+        $w('#section1').scrollTo();
+        $w('#statementRepeater').hide();
+
+        let strengthDescriptions = await getStrengths();
+
+        let max = answers[0][1]; // The second element of the first tuple is guaranteed to hold the highest assessment score
+        let count = answers.length;
+    
+        // A little bit of fuzzy logic here:
+        // Ideally show three strengths BUT
+        // If there's a tie for third,
+        //     If there's more than two values tied for third, only show the first two
+        //     Else show four
+        // Note: I didn't bother thinking about what happens if the first five are all tied.
+        if (count >= 4) {
+            count = 3;
+            if (answers[2][1] == answers[3][1]) {
+                if (count >= 5 && answers[3][1] == answers[4][1]) {
+                    count = 2;
+                } else {
+                    count = 4;
+                }
+            }
+            // Finally, use this logical count as a maximum, and throw out the lesser strengths.
+            answers.length = count;
+        }  
+        
+        let newStatus = '<p>Your top strengths are:</p><br/>\n';
+        for (let i = 0; i < count; i++) {
+            let strength = answers[i][0];
+            newStatus += '<p style="display: list-item;">'
+                    + '<b>' + strength + '</b>: '
+                    + strengthDescriptions[strength]
+                    + '</p><br/>\n';
+        }
+
+        let answerString = answers.map(answer => answer[0]).join(", ");
+        notifyOwner("Public Assessment", answerString);
+
+        $w('#assessment').collapse();
+        $w('#spinner').hide();
+        $w('#results').show();
+        $w('#outcome').html = newStatus;
+        $w('#outcome').scrollTo();
+    }
+    execute();
+    return;
+}
