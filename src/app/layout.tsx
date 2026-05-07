@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { Geist } from 'next/font/google'
+import { GoogleAnalytics } from '@next/third-parties/google'
 import { SanityLive } from '@/sanity/lib/live'
 import './globals.css'
 
@@ -20,6 +21,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <SanityLive />
         {children}
       </body>
+      <GoogleAnalytics gaId="G-QSSXH484TX" />
     </html>
   )
 }
