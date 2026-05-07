@@ -1,0 +1,44 @@
+name: Deploy to Linode
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+
+            export NVM_DIR="$HOME/.nvm"
+            source "$NVM_DIR/nvm.sh"
+
+            APP_DIR="/var/www/alegitleader"
+
+            # Clone on first deploy, pull on subsequent ones
+            if [ ! -d "$APP_DIR/.git" ]; then
+              git clone https://github.com/arsenio/alegitleader.git "$APP_DIR"
+            else
+              git -C "$APP_DIR" pull origin main
+            fi
+
+            cd "$APP_DIR"
+
+            npm ci
+            npm run build
+
+            # Start or restart via PM2
+            if pm2 list | grep -q "alegitleader"; then
+              pm2 restart alegitleader
+            else
+              pm2 start npm --name "alegitleader" -- start
+              pm2 save
+              pm2 startup | tail -1 | bash
+            fi
